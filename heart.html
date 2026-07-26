@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>cyber-heartbeat · 赛博心跳</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #000;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  height: 100vh; overflow: hidden;
+  font-family: -apple-system, "Segoe UI", sans-serif;
+  user-select: none;
+}
+canvas { display: block; }
+.controls {
+  margin-top: 16px;
+  display: flex; align-items: center; gap: 14px;
+  color: #555; font-size: 13px;
+}
+.controls label { display: flex; align-items: center; gap: 8px; }
+.controls input[type="range"] {
+  width: 120px; height: 4px;
+  -webkit-appearance: none; appearance: none;
+  background: #222; border-radius: 2px; outline: none;
+}
+.controls input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: rgb(255,153,247); cursor: pointer;
+}
+.bpm-value {
+  color: rgb(255,153,247); font-weight: 700; font-size: 15px;
+  min-width: 36px; text-align: center; font-variant-numeric: tabular-nums;
+}
+.arrhythmia-toggle {
+  cursor: pointer; padding: 4px 10px; border-radius: 12px;
+  border: 1px solid #333; background: transparent; color: #555;
+  font-size: 12px; transition: all 0.2s;
+}
+.arrhythmia-toggle.active {
+  border-color: rgb(255,153,247); color: rgb(255,153,247);
+  background: rgba(255,153,247,0.08);
+}
+.info {
+  margin-top: 32px; text-align: center;
+}
+.info a {
+  color: #444; font-size: 12px; text-decoration: none;
+}
+.info a:hover { color: rgb(255,153,247); }
+</style>
+</head>
+<body>
+
+<canvas id="c" width="320" height="320"></canvas>
+
+<div class="controls">
+  <label>
+    <span>💗</span>
+    <input type="range" id="bpmSlider" min="40" max="130" value="72">
+    <span class="bpm-value" id="bpmDisplay">72</span>
+    <span>BPM</span>
+  </label>
+  <button class="arrhythmia-toggle" id="arrhythmiaBtn">心律不齐</button>
+</div>
+<div class="info">
+  <a href="https://github.com/lofunan/cyber-heartbeat" target="_blank">github.com/lofunan/cyber-heartbeat</a>
+</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const W = 320, H = 320, CX = W/2, CY = H/2, SCALE = 8.5;
+const COL_BASE = { r: 255, g: 153, b: 247 };
+const COL_STR = 'rgb(255,153,247)';
+
+let bpm = 72;
+let arrhythmia = false;
+let arrhythmiaTimer = 0;
+
+function heartFunc(t, s) {
+  return {
+    x: 16 * Math.pow(Math.sin(t), 3) * (s || SCALE) + CX,
+    y: -(13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t)) * (s || SCALE) + CY
+  };
+}
+
+function scatterInside(x, y, beta) {
+  const rx = -beta * Math.log(Math.random());
+  const ry = -beta * Math.log(Math.random());
+  return { x: x - rx * (x - CX), y: y - ry * (y - CY) };
+}
+
+function shrink(x, y, radius) {
+  const dx = x - CX, dy = y - CY;
+  const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+  const force = -1 / Math.pow(dist, 0.6);
+  return { x: x - radius * force * dx, y: y - radius * force * dy };
+}
+
+function smoothCrease(x) {
+  const d = Math.abs(x - CX);
+  if (d > 45) return 1;
+  const t = d / 45;
+  return 0.15 + 0.85 * (3*t*t - 2*t*t*t);
+}
+
+function build() {
+  const keep = (x, c) => Math.random() < smoothCrease(x) * c;
+
+  const outline = [];
+  for (let i = 0; i < 1600; i++) {
+    outline.push(heartFunc((i / 1600) * 2 * Math.PI));
+  }
+
+  const edgeDiff = [];
+  for (const p of outline) {
+    for (let j = 0; j < 3; j++) {
+      const s = scatterInside(p.x, p.y, 0.05);
+      if (keep(s.x, 0.8)) edgeDiff.push(s);
+    }
+  }
+
+  const centerDiff = [];
+  for (let i = 0; i < 1600; i++) {
+    const p = outline[Math.floor(Math.random() * outline.length)];
+    const s = scatterInside(p.x, p.y, 0.17);
+    if (keep(s.x, 0.6)) centerDiff.push(s);
+  }
+
+  const halo = [];
+  for (let i = 0; i < 2000; i++) {
+    const p = heartFunc(Math.random() * 2 * Math.PI, 11.6 * SCALE / 13);
+    if (keep(p.x, 0.7)) halo.push(p);
+  }
+
+  return { halo, outline, edgeDiff, centerDiff };
+}
+
+const P = build();
+
+function render(time) {
+  ctx.clearRect(0, 0, W, H);
+
+  const phase = (time * bpm / 60) % 1;
+  const breathe = 0.82 + 0.18 * (1 - Math.cos(2 * Math.PI * phase)) / 2;
+  const haloR = 4 + 8 * (1 - Math.cos(2 * Math.PI * phase)) / 2;
+
+  const COL_HALO = `rgba(${COL_BASE.r},${COL_BASE.g},${COL_BASE.b},0.25)`;
+  const COL_EDGE = `rgb(${Math.round(COL_BASE.r*0.9)},${Math.round(COL_BASE.g*0.85)},${Math.round(COL_BASE.b*0.9)})`;
+  const COL_CENTER = `rgb(${Math.round(COL_BASE.r*0.78)},${Math.round(COL_BASE.g*0.68)},${Math.round(COL_BASE.b*0.78)})`;
+
+  ctx.fillStyle = COL_HALO;
+  for (const p of P.halo) {
+    const dx = p.x - CX, dy = p.y - CY;
+    const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+    const force = -1 / Math.pow(dist, 0.6);
+    const sx = p.x - haloR * force * dx;
+    const sy = p.y - haloR * force * dy;
+    const x = sx + (Math.random() - 0.5) * 28;
+    const y = sy + (Math.random() - 0.5) * 28;
+    const sz = Math.random() < 0.5 ? 1 : 2;
+    ctx.fillRect(x, y, sz, sz);
+  }
+
+  const sc = breathe;
+  ctx.fillStyle = COL_STR;
+  for (const p of P.outline) {
+    const x = CX + (p.x - CX) * sc;
+    const y = CY + (p.y - CY) * sc;
+    const sz = 1.5 + Math.random() * 1.5;
+    ctx.fillRect(x - sz/2, y - sz/2, sz, sz);
+  }
+
+  ctx.fillStyle = COL_EDGE;
+  for (const p of P.edgeDiff) {
+    const x = CX + (p.x - CX) * sc;
+    const y = CY + (p.y - CY) * sc;
+    const sz = 1 + Math.random();
+    ctx.fillRect(x - sz/2, y - sz/2, sz, sz);
+  }
+
+  ctx.fillStyle = COL_CENTER;
+  for (const p of P.centerDiff) {
+    const x = CX + (p.x - CX) * sc;
+    const y = CY + (p.y - CY) * sc;
+    const sz = 1 + Math.random();
+    ctx.fillRect(x - sz/2, y - sz/2, sz, sz);
+  }
+}
+
+function animate(timestamp) {
+  const t = timestamp / 1000;
+
+  if (arrhythmia) {
+    arrhythmiaTimer += 16;
+    const beatMs = 60000 / bpm;
+    if (arrhythmiaTimer > beatMs * 4) { arrhythmiaTimer = 0; }
+    const skip = arrhythmiaTimer > beatMs * 3;
+    if (!skip) render(t);
+  } else {
+    render(t);
+  }
+
+  requestAnimationFrame(animate);
+}
+
+document.getElementById('bpmSlider').addEventListener('input', function () {
+  bpm = parseInt(this.value);
+  document.getElementById('bpmDisplay').textContent = bpm;
+});
+
+document.getElementById('arrhythmiaBtn').addEventListener('click', function () {
+  arrhythmia = !arrhythmia;
+  this.classList.toggle('active', arrhythmia);
+  arrhythmiaTimer = 0;
+});
+
+requestAnimationFrame(animate);
+</script>
+</body>
+</html>
