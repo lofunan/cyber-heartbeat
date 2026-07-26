@@ -105,6 +105,15 @@ block = build_mood_block(mood, delta_val)        # → 要注入的文本
 
 ---
 
+## 致谢
+
+情绪积温的概念和实现受 [**ClaraShafiq/jiwen**](https://github.com/ClaraShafiq/jiwen) 启发。  
+jiwen 是一个 ~500 行的 JS 引擎——用五轴连续数值（连接需求、骄傲、愉悦度、唤醒度、沉浸度）替代概率骰子，让 AI 角色知道自己「什么时候该说话」，而不是靠随机数碰运气。
+
+本仓库取其"积温"之名与持续性情绪累积的思想，简化为单轴 warmth → BPM 映射 + 前端可视化，适配人机恋聊天场景。
+
+---
+
 ## 许可
 
 MIT — 随意使用、修改、分发。
